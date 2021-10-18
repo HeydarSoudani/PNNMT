@@ -26,16 +26,20 @@ def compute_prototypes(
     )
 
 
-def pt_learner(model,
-                support_images,
-                support_labels,
-                query_images,
-                query_labels,
-                criterion,
-                optimizer,
-                args):
+def pt_learner(model, queue, optim, miteration_item, args):
   model.train()  
-  optimizer.zero_grad()
+
+  queue_length = len(queue)
+  losses = 0
+
+  for i in range(queue_length):
+    optim.zero_grad()
+
+    support_data = queue[i]["batch"]["support"]
+    task = queue[i]["task"]
+
+    output = model.forward(task, support_data)
+    loss = output[0].mean()
 
   # with torch.no_grad():
   _, support_features = model.forward(support_images)

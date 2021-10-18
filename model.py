@@ -94,6 +94,7 @@ class BertMetaLearning(nn.Module):
             batch_size = data["input_ids"].shape[0]
             pooled_output = outputs[1]
 
+            print(pooled_output.shape)
             pooled_output = self.sc_dropout(pooled_output)
             logits = self.sc_classifier(pooled_output)
 

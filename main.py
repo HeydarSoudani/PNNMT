@@ -351,24 +351,24 @@ def main():
 
   no_decay = ["bias", "LayerNorm.weight"]
   optimizer_grouped_parameters = [
-      {
-          "params": [
-              p
-              for n, p in model.named_parameters()
-              if not any(nd in n for nd in no_decay)
-          ],
-          "weight_decay": args.weight_decay,
-          "lr": args.meta_lr,
-      },
-      {
-          "params": [
-              p
-              for n, p in model.named_parameters()
-              if any(nd in n for nd in no_decay)
-          ],
-          "weight_decay": 0.0,
-          "lr": args.meta_lr,
-      },
+    {
+      "params": [
+        p
+        for n, p in model.named_parameters()
+        if not any(nd in n for nd in no_decay)
+      ],
+      "weight_decay": args.weight_decay,
+      "lr": args.meta_lr,
+    },
+    {
+      "params": [
+        p
+        for n, p in model.named_parameters()
+        if any(nd in n for nd in no_decay)
+      ],
+      "weight_decay": 0.0,
+      "lr": args.meta_lr,
+    },
   ]
 
   optim = AdamW(
@@ -391,7 +391,7 @@ def main():
   logger["args"] = args
 
 
-  ## == 2) Learn model
+  ## == training ======
   global_time = time.time()
 
   min_task_losses = {
@@ -403,89 +403,77 @@ def main():
   }
 
   try:
-      for epoch_item in range(args.start_epoch, args.epochs):
-          print(
-            "===================================== Epoch %d ====================================="
-            % epoch_item
-          )
-          train_loss = 0.0
+    for epoch_item in range(args.start_epoch, args.epochs):
+      print(
+        "===================================== Epoch %d ====================================="
+        % epoch_item
+      )
+      train_loss = 0.0
 
-          train_loader_iterations = [
-              iter(train_loader) for train_loader in train_loaders
-          ]
-          for miteration_item in range(args.meta_iteration):
+      train_loader_iterations = [
+        iter(train_loader) for train_loader in train_loaders
+      ]
+      for miteration_item in range(args.meta_iteration):
 
-              # == Data preparation ===========
-              queue = [
-                {"batch": next(train_loader_iterations[i]), "task": task}
-                for i, task in enumerate(list_of_tasks)
-              ]
-              print(queue[0]['batch'])
-              time.sleep(5)
+        # == Data preparation ===========
+        queue = [
+          {"batch": next(train_loader_iterations[i]), "task": task}
+          for i, task in enumerate(list_of_tasks)
+        ]
+      
+        ## == train ===================
+        # loss = reptile_learner(model, queue, optim, miteration_item, args)
+        loss = pt_learner(model, queue, optim, miteration_item, args)
+        train_loss += loss
 
+        ## == validation ==============
+        if (miteration_item + 1) % args.log_interval == 0:
 
-              ## == train ===================
-              loss = reptile_learner(model, queue, optim, miteration_item, args)
-              # loss, prototypes = pt_learner(
-              #     model,
-              #     support_images,
-              #     support_labels,
-              #     query_images,
-              #     query_labels,
-              #     criterion,
-              #     optim,
-              #     args,
-              # )
-              train_loss += loss
+            total_loss = train_loss / args.log_interval
+            train_loss = 0.0
 
-              ## == validation ==============
-              if (miteration_item + 1) % args.log_interval == 0:
+            # evalute on val_dataset
+            val_loss_dict, val_loss_total = evaluateMeta(model, dev_loaders)
+            # val_loss_total = reptile_evaluate(model, dev_loader, criterion, DEVICE) # For Reptile
+            # val_loss_total = pt_evaluate(
+            #     model, val_dataloader, prototypes, criterion, device
+            # )  # For Pt.
 
-                  total_loss = train_loss / args.log_interval
-                  train_loss = 0.0
+            loss_per_task = {}
+            for task in val_loss_dict.keys():
+                if task[:2] in loss_per_task.keys():
+                    loss_per_task[task[:2]] = (
+                        loss_per_task[task[:2]] + val_loss_dict[task]
+                    )
+                else:
+                    loss_per_task[task[:2]] = val_loss_dict[task]
 
-                  # evalute on val_dataset
-                  val_loss_dict, val_loss_total = evaluateMeta(model, dev_loaders)
-                  # val_loss_total = reptile_evaluate(model, dev_loader, criterion, DEVICE) # For Reptile
-                  # val_loss_total = pt_evaluate(
-                  #     model, val_dataloader, prototypes, criterion, device
-                  # )  # For Pt.
+            print(
+                "Time: %f, Step: %d, Train Loss: %f, Val Loss: %f"
+                % (
+                    time.time() - global_time,
+                    miteration_item + 1,
+                    total_loss,
+                    val_loss_total,
+                )
+            )
+            print("===============================================")
+            global_time = time.time()
 
-                  loss_per_task = {}
-                  for task in val_loss_dict.keys():
-                      if task[:2] in loss_per_task.keys():
-                          loss_per_task[task[:2]] = (
-                              loss_per_task[task[:2]] + val_loss_dict[task]
-                          )
-                      else:
-                          loss_per_task[task[:2]] = val_loss_dict[task]
+            for task in loss_per_task.keys():
+                if loss_per_task[task] < min_task_losses[task]:
+                    torch.save(
+                        model, os.path.join(args.save, "model_" + task + ".pt"),
+                    )
+                    min_task_losses[task] = loss_per_task[task]
+                    print("Saving " + task + "  Model")
+            total_loss = 0
 
-                  print(
-                      "Time: %f, Step: %d, Train Loss: %f, Val Loss: %f"
-                      % (
-                          time.time() - global_time,
-                          miteration_item + 1,
-                          total_loss,
-                          val_loss_total,
-                      )
-                  )
-                  print("===============================================")
-                  global_time = time.time()
-
-                  for task in loss_per_task.keys():
-                      if loss_per_task[task] < min_task_losses[task]:
-                          torch.save(
-                              model, os.path.join(args.save, "model_" + task + ".pt"),
-                          )
-                          min_task_losses[task] = loss_per_task[task]
-                          print("Saving " + task + "  Model")
-                  total_loss = 0
-
-              if args.scheduler:
-                  scheduler.step()
+        if args.scheduler:
+            scheduler.step()
 
   except KeyboardInterrupt:
-      print("skipping training")
+    print("skipping training")
 
   # save last model
   torch.save(model, os.path.join(args.save, "model_last.pt"))
