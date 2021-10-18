@@ -41,7 +41,6 @@ def pt_learner(model, queue, trg_queue, criterion, optim, args, device):
 
     _, support_features = model.forward(support_task, support_data)
     prototypes = compute_prototypes(support_features, support_labels)
-    print('pt: {}'.format(prototypes.shape))
 
     # with torch.no_grad():
     query_data = trg_queue[0]["batch"]["query"]

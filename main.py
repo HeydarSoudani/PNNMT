@@ -138,7 +138,7 @@ def evaluate(model, data, device):
   with torch.no_grad():
     total_loss = 0.0
     for batch in data:
-      data_labels = data["label"].to(device)
+      data_labels = batch["label"].to(device)
       output, _ = model.forward(args.target_task, batch)
       loss = F.cross_entropy(output, data_labels, reduction="none")
       loss = loss.mean()
