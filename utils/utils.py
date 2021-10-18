@@ -1,5 +1,6 @@
 import os
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, SequentialSampler
 from transformers.data.metrics.squad_metrics import (
     squad_evaluate,
@@ -104,8 +105,11 @@ def evaluateNLI(model, data, device, return_matrix=False):
         matrix = [[0 for _ in range(3)] for _ in range(3)]
         for batch in data:
             batch["label"] = batch["label"].to(device)
-            output = model.forward("sc", batch)
-            loss, logits = output[0].mean(), output[1]
+            
+            logits, _ = model.forward("sc", batch)
+            loss = F.cross_entropy(logits, batch["label"], reduction="none")
+            loss = loss.mean()
+
             prediction = torch.argmax(logits, dim=1)
             correct += torch.sum(prediction == batch["label"]).item()
             for k in range(batch["label"].shape[0]):

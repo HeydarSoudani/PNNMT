@@ -88,12 +88,10 @@ sys.stdout = Logger(os.path.join(args.save, args.log_file))
 print(args)
 
 if torch.cuda.is_available():
-    if not args.cuda:
-        # print("WARNING: You have a CUDA device, so you should probably run with --cuda")
-        args.cuda = True
-
-    torch.cuda.manual_seed_all(args.seed)
-
+  if not args.cuda:
+    # print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+    args.cuda = True
+  torch.cuda.manual_seed_all(args.seed)
 DEVICE = torch.device("cuda" if args.cuda else "cpu")
 
 
@@ -140,36 +138,16 @@ def load_data(task_lang):
 
 test_corpus, batch_size = load_data(args.task)
 test_dataloader = DataLoader(
-    test_corpus, batch_size=batch_size, pin_memory=True, drop_last=True
+  test_corpus,
+  batch_size=batch_size,
+  pin_memory=True,
+  drop_last=True
 )
 
 model = BertMetaLearning(args).to(DEVICE)
 
 if args.load != "":
-    model = torch.load(args.load)
-
-no_decay = ["bias", "LayerNorm.weight"]
-optimizer_grouped_parameters = [
-    {
-        "params": [
-            p
-            for n, p in model.named_parameters()
-            if not any(nd in n for nd in no_decay)
-        ],
-        "weight_decay": args.weight_decay,
-    },
-    {
-        "params": [
-            p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)
-        ],
-        "weight_decay": 0.0,
-    },
-]
-
-optim = AdamW(optimizer_grouped_parameters, lr=args.lr, eps=args.adam_epsilon)
-scheduler = get_linear_schedule_with_warmup(
-    optim, num_warmup_steps=args.warmup, num_training_steps=10000
-)
+  model = torch.load(args.load)
 
 
 def test():
