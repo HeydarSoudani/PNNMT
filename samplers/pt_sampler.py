@@ -61,19 +61,19 @@ class TaskSampler(Sampler):
     self, input_data: List[Tuple[torch.Tensor, int]]
   ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Collate function to be used as argument for the collate_fn parameter of episodic
-        data loaders.
+    Collate function to be used as argument for the collate_fn parameter of episodic data loaders.
     Args:
-        input_data: each element is a tuple containing:
-            - an image as a torch Tensor
-            - the label of this image
+      input_data: each element is a tuple containing:
+        - an image as a torch Tensor
+        - the label of this image
     Returns:
-        list({
-            support: {key: Tensor for key in input_data},
-            query: {key: Tensor for key in input_data}
-        }) with length of reptile_step
+      list({
+          support: {key: Tensor for key in input_data},
+          query: {key: Tensor for key in input_data}
+      }) with length of reptile_step
     """
     print(input_data)
+    print(len(input_data))
     if "label" in input_data[0].keys():
       input_data.sort(key=lambda item: item["label"])
 
