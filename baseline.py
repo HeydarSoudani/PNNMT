@@ -1,5 +1,6 @@
 import os, json, argparse, time, torch, logging, warnings, sys
 
+import torch.nn.functional as F
 import pickle5 as pickle
 
 import numpy as np
@@ -9,9 +10,6 @@ from utils.utils import evaluateQA, evaluateNLI, evaluateNER, evaluatePOS, evalu
 from utils.logger import Logger
 from model import BertMetaLearning
 from datapath import get_loc
-
-# import torch_xla
-# import torch_xla.core.xla_model as xm
 
 from transformers import (
     AdamW,
@@ -254,8 +252,11 @@ def train(model, task, data):
     model.train()
     for j, batch in enumerate(data):
         optim.zero_grad()
-        output = model.forward(task, batch)
-        loss = output[0].mean()
+        
+        data_labels = batch["label"].to(DEVICE)
+        output, _ = model.forward(args.target_task, batch)
+        loss = F.cross_entropy(output, data_labels, reduction="none")
+        loss = loss.mean()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
         to_return += loss.item()

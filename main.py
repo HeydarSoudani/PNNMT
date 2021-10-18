@@ -1,8 +1,5 @@
 import argparse, time, torch, os, logging, warnings, sys
-from numpy.core.numeric import Inf
-
 import numpy as np
-from torch._C import device
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR
@@ -35,16 +32,21 @@ parser.add_argument("--meta_lr", type=float, default=2e-5, help="meta learning r
 parser.add_argument("--dropout", type=float, default=0.1, help="")
 parser.add_argument("--hidden_dims", type=int, default=768, help="")  # 768
 
+parser.add_argument("--lambda_1", type=float, default=1.0, help="DCE Coefficient in loss function")
+parser.add_argument("--lambda_2", type=float, default=0.5, help="CE Coefficient in loss function")
+parser.add_argument("--lambda_3", type=float, default=0.001, help="PL Coefficient in loss function")
+parser.add_argument("--temp_scale", type=float, default=0.2, help="Temperature scale for DCE in loss function")
+
 # bert-base-multilingual-cased
 # xlm-roberta-base
 parser.add_argument(
-    "--model_name",
-    type=str,
-    default="xlm-roberta-base",
-    help="name of the pretrained model",
+  "--model_name",
+  type=str,
+  default="xlm-roberta-base",
+  help="name of the pretrained model",
 )
 parser.add_argument(
-    "--local_model", action="store_true", help="use local pretrained model"
+  "--local_model", action="store_true", help="use local pretrained model"
 )
 
 parser.add_argument("--sc_labels", type=int, default=3, help="")
@@ -66,8 +68,7 @@ parser.add_argument("--beta", type=float, default=1.0, help="")
 # ---------------
 parser.add_argument("--epochs", type=int, default=5, help="iterations")  # 5
 parser.add_argument("--start_epoch", type=int, default=0, help="start iterations from")  # 0
-parser.add_argument("--ways", type=int, default=2, help="number of ways")  # 2
-parser.add_argument("--query_ways", type=int, default=2, help="number of ways for query")
+parser.add_argument("--ways", type=int, default=3, help="number of ways")  # 2
 parser.add_argument("--shot", type=int, default=4, help="number of shots")  # 4
 parser.add_argument("--query_num", type=int, default=4, help="number of queries")  # 0
 parser.add_argument("--meta_iteration", type=int, default=3000, help="")

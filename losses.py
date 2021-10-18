@@ -71,29 +71,27 @@ class DCELoss(nn.Module):
     return loss_val
 
 class CPELoss(nn.Module):
-  def __init__(self, args, gamma=0.2, tao=10.0, b=5.0, beta=1.0, lambda_=0.001):
+  def __init__(self, args):
     super().__init__()
-    self.lambda_ = lambda_
     self.args = args
+
+    self.lambda_1 = args.lambda_1
+    self.lambda_2 = args.lambda_2
+    self.lambda_3 = args.lambda_3
     
-    self.dce = DCELoss(gamma=gamma)
+    self.dce = DCELoss(gamma=args.temp_scale)
     self.proto = PrototypeLoss()
     self.ce = torch.nn.CrossEntropyLoss()
 
   def forward(self, features, outputs, labels, prototypes):
     dce_loss = self.dce(features, labels, prototypes, self.args)
-    prototype_loss = self.proto(features, labels, prototypes)
     cls_loss = self.ce(outputs, labels)
-    
+    prototype_loss = self.proto(features, labels, prototypes)
+    return \
+      self.lambda_1 * dce_loss \
+      + self.lambda_2 * cls_loss \
+      + self.lambda_3 * prototype_loss
 
-    # return cls_loss + self.lambda_ * dce_loss
-    return cls_loss + dce_loss + self.lambda_ * prototype_loss
-
-  def update(self, gamma=0.1, tao=10.0, b=1.0, beta=1.0):
-    self.dce.gamma = gamma
-    self.pairwise.tao = tao
-    self.pairwise.b = b
-    self.pairwise.beta = beta
 
 
 
