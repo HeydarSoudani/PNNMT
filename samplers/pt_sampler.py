@@ -73,6 +73,7 @@ class TaskSampler(Sampler):
             query: {key: Tensor for key in input_data}
         }) with length of reptile_step
     """
+    print(input_data)
     if "label" in input_data[0].keys():
       input_data.sort(key=lambda item: item["label"])
 
