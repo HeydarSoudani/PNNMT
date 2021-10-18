@@ -147,9 +147,9 @@ def evaluate(model, data, device):
     return total_loss
 
 
-def evaluateMeta(model, dev_loader, device):
+def evaluateMeta(model, dev_loaders, device):
   model.eval()
-  loss = evaluate(model, dev_loader, device)
+  loss = evaluate(model, dev_loaders[0], device)
   return loss
 
 
