@@ -322,7 +322,6 @@ def main():
 
     train_sampler = TaskSampler(
       train_corpus,
-      trg_train_corpus,
       n_way=args.ways,
       n_shot=args.shot,
       n_query=0,
