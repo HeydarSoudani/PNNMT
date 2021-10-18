@@ -1,18 +1,20 @@
 import argparse, time, torch, os, logging, warnings, sys
+from numpy.core.numeric import Inf
 
 import numpy as np
+from torch._C import device
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR
 from data import CorpusQA, CorpusSC, CorpusTC, CorpusPO, CorpusPA
 from model import BertMetaLearning
 from datapath import loc, get_loc
 
-# import torch_xla
-# import torch_xla.core.xla_model as xm
+from losses import CPELoss
+
 
 # from samplers.reptile_sampler import TaskSampler
 # from learners.reptile_learner import reptile_learner
-
 from samplers.pt_sampler import TaskSampler
 from learners.pt_learner import pt_learner
 
@@ -112,7 +114,7 @@ torch.manual_seed(args.seed)
 np.random.seed(args.seed)
 
 if not os.path.exists(args.save):
-    os.makedirs(args.save)
+  os.makedirs(args.save)
 
 sys.stdout = Logger(os.path.join(args.save, args.log_file))
 print(args)
@@ -121,37 +123,34 @@ task_types = args.meta_tasks.split(",")
 list_of_tasks = []
 
 for tt in loc["train"].keys():
-    if tt[:2] in task_types:
-        list_of_tasks.append(tt)
+  if tt[:2] in task_types:
+    list_of_tasks.append(tt)
 
 for tt in task_types:
-    if "_" in tt:
-        list_of_tasks.append(tt)
+  if "_" in tt:
+    list_of_tasks.append(tt)
 
 list_of_tasks = list(set(list_of_tasks))
 print(list_of_tasks)
 
 
-def evaluate(model, task, data):
-    with torch.no_grad():
-        total_loss = 0.0
-        for batch in data:
-            output = model.forward(task, batch)
-            loss = output[0].mean()
-            total_loss += loss.item()
-        total_loss /= len(data)
-        return total_loss
+def evaluate(model, data, device):
+  with torch.no_grad():
+    total_loss = 0.0
+    for batch in data:
+      data_labels = data["label"].to(device)
+      output, _ = model.forward(args.target_task, batch)
+      loss = F.cross_entropy(output, data_labels, reduction="none")
+      loss = loss.mean()
+      total_loss += loss.item()
+    total_loss /= len(data)
+    return total_loss
 
 
-def evaluateMeta(model, dev_loaders):
-    loss_dict = {}
-    total_loss = 0
-    model.eval()
-    for i, task in enumerate(list_of_tasks):
-        loss = evaluate(model, task, dev_loaders[i])
-        loss_dict[task] = loss
-        total_loss += loss
-    return loss_dict, total_loss
+def evaluateMeta(model, dev_loader, device):
+  model.eval()
+  loss = evaluate(model, dev_loader, device)
+  return loss
 
 
 def main():
@@ -244,7 +243,11 @@ def main():
     pin_memory=True,
     collate_fn=trg_train_sampler.episodic_collate_fn,
   )
-  trg_dev_loader = DataLoader(trg_dev_corpus, batch_size=trg_batch_size, pin_memory=True)
+  trg_dev_loader = DataLoader(
+    trg_dev_corpus,
+    batch_size=trg_batch_size,
+    pin_memory=True
+  )
 
   ### ================================
   
@@ -336,7 +339,11 @@ def main():
     )
     train_loaders.append(train_loader)
 
-    dev_loader = DataLoader(dev_corpus, batch_size=batch_size, pin_memory=True)
+    dev_loader = DataLoader(
+      dev_corpus,
+      batch_size=batch_size,
+      pin_memory=True
+    )
     dev_loaders.append(dev_loader)
 
   ### ================================
@@ -383,6 +390,7 @@ def main():
     gamma=args.gamma,
     last_epoch=args.last_step - 1,
   )
+  criterion = CPELoss(args)
 
   logger = {}
   logger["total_val_loss"] = []
@@ -394,6 +402,7 @@ def main():
   ## == training ======
   global_time = time.time()
 
+  min_loss = float("inf")
   min_task_losses = {
     "qa": float("inf"),
     "sc": float("inf"),
@@ -413,6 +422,7 @@ def main():
       train_loader_iterations = [
         iter(train_loader) for train_loader in train_loaders
       ]
+      trg_train_loader_iteration = iter(trg_train_loader)
       for miteration_item in range(args.meta_iteration):
 
         # == Data preparation ===========
@@ -420,57 +430,48 @@ def main():
           {"batch": next(train_loader_iterations[i]), "task": task}
           for i, task in enumerate(list_of_tasks)
         ]
+        trg_queue = [{"batch": next(trg_train_loader_iteration), "task": args.target_task}]
       
         ## == train ===================
         # loss = reptile_learner(model, queue, optim, miteration_item, args)
-        loss = pt_learner(model, queue, optim, miteration_item, args)
+        loss = pt_learner(
+          model,
+          queue,
+          trg_queue,
+          criterion,
+          optim,
+          args,
+          device=DEVICE)
         train_loss += loss
 
         ## == validation ==============
         if (miteration_item + 1) % args.log_interval == 0:
+          total_loss = train_loss / args.log_interval
+          train_loss = 0.0
 
-            total_loss = train_loss / args.log_interval
-            train_loss = 0.0
-
-            # evalute on val_dataset
-            val_loss_dict, val_loss_total = evaluateMeta(model, dev_loaders)
-            # val_loss_total = reptile_evaluate(model, dev_loader, criterion, DEVICE) # For Reptile
-            # val_loss_total = pt_evaluate(
-            #     model, val_dataloader, prototypes, criterion, device
-            # )  # For Pt.
-
-            loss_per_task = {}
-            for task in val_loss_dict.keys():
-                if task[:2] in loss_per_task.keys():
-                    loss_per_task[task[:2]] = (
-                        loss_per_task[task[:2]] + val_loss_dict[task]
-                    )
-                else:
-                    loss_per_task[task[:2]] = val_loss_dict[task]
-
-            print(
-                "Time: %f, Step: %d, Train Loss: %f, Val Loss: %f"
-                % (
-                    time.time() - global_time,
-                    miteration_item + 1,
-                    total_loss,
-                    val_loss_total,
-                )
+          # evalute on val_dataset
+          val_loss_total = evaluateMeta(model, [trg_dev_loader], device=DEVICE)
+          print(
+            "Time: %f, Step: %d, Train Loss: %f, Val Loss: %f"
+            % (
+              time.time() - global_time,
+              miteration_item + 1,
+              total_loss,
+              val_loss_total,
             )
-            print("===============================================")
-            global_time = time.time()
+          )
+          global_time = time.time()
 
-            for task in loss_per_task.keys():
-                if loss_per_task[task] < min_task_losses[task]:
-                    torch.save(
-                        model, os.path.join(args.save, "model_" + task + ".pt"),
-                    )
-                    min_task_losses[task] = loss_per_task[task]
-                    print("Saving " + task + "  Model")
-            total_loss = 0
-
+          if val_loss_total < min_loss:
+            torch.save(
+              model, os.path.join(args.save, "model_" + args.target_task + ".pt"),
+            )
+            min_loss = val_loss_total
+            print("Saving " + args.target_task + "  Model")
+          total_loss = 0
+          print("===============================================")
         if args.scheduler:
-            scheduler.step()
+          scheduler.step()
 
   except KeyboardInterrupt:
     print("skipping training")

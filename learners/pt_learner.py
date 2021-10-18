@@ -7,26 +7,26 @@ import time
 def compute_prototypes(
     support_features: torch.Tensor, support_labels: torch.Tensor
 ) -> torch.Tensor:
-    """
-    Compute class prototypes from support features and labels
-    Args:
-        support_features: for each instance in the support set, its feature vector
-        support_labels: for each instance in the support set, its label
-    Returns:
-        for each label of the support set, the average feature vector of instances with this label
-    """
-    seen_labels = torch.unique(support_labels)
+  """
+  Compute class prototypes from support features and labels
+  Args:
+    support_features: for each instance in the support set, its feature vector
+    support_labels: for each instance in the support set, its label
+  Returns:
+    for each label of the support set, the average feature vector of instances with this label
+  """
+  seen_labels = torch.unique(support_labels)
 
-    # Prototype i is the mean of all instances of features corresponding to labels == i
-    return torch.cat(
-        [
-          support_features[(support_labels == l).nonzero(as_tuple=True)[0]].mean(0).reshape(1, -1)
-          for l in seen_labels
-        ]
-    )
+  # Prototype i is the mean of all instances of features corresponding to labels == i
+  return torch.cat(
+    [
+      support_features[(support_labels == l).nonzero(as_tuple=True)[0]].mean(0).reshape(1, -1)
+      for l in seen_labels
+    ]
+  )
 
 
-def pt_learner(model, queue, optim, miteration_item, args):
+def pt_learner(model, queue, trg_queue, criterion, optim, args, device):
   model.train()  
 
   queue_length = len(queue)
@@ -36,33 +36,27 @@ def pt_learner(model, queue, optim, miteration_item, args):
     optim.zero_grad()
 
     support_data = queue[i]["batch"]["support"]
-    task = queue[i]["task"]
+    support_labels = support_data["label"].to(device)
+    support_task = queue[i]["task"]
 
-    output = model.forward(task, support_data)
-    loss = output[0].mean()
+    _, support_features = model.forward(support_task, support_data)
+    prototypes = compute_prototypes(support_features, support_labels)
+    print('pt: {}'.format(prototypes.shape))
 
-  # with torch.no_grad():
-  _, support_features = model.forward(support_images)
+    # with torch.no_grad():
+    query_data = trg_queue[0]["batch"]["query"]
+    query_labels = query_data["label"].to(device)
+    query_task = trg_queue[0]["task"]
+
+    outputs, query_features = model.forward(query_task, query_data)
   
-  prototypes = compute_prototypes(support_features, support_labels)
-  # prototypes = prototypes.detach()
-  outputs, query_features = model.forward(query_images)
+    loss = criterion(query_features, outputs, query_labels, prototypes)
+    loss.backward()
+    losses += loss.item()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+    optim.step()
 
-  #   dists = torch.cdist(z_query, prototypes)
-  #   classification_scores = -dists
-  #   loss = criterion(classification_scores, query_labels)
-  # input = torch.cat((support_features, query_features))
-  # target = torch.cat((support_labels, query_labels))
-
-  # loss, prototypes = prototypical_loss(input, target, args.ways)
-  loss = criterion(query_features, outputs, query_labels, prototypes)
-
-  loss.backward()
-
-  torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
-  optimizer.step()
-
-  return loss, prototypes
+  return losses / queue_length
 
 
 ## For Pt.

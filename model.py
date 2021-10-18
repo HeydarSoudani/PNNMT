@@ -92,14 +92,13 @@ class BertMetaLearning(nn.Module):
             )
 
             batch_size = data["input_ids"].shape[0]
-            pooled_output = outputs[1]
+            features = outputs[1] #[n, 768]
 
-            print(pooled_output.shape)
-            pooled_output = self.sc_dropout(pooled_output)
+            pooled_output = self.sc_dropout(features)
             logits = self.sc_classifier(pooled_output)
 
-            loss = F.cross_entropy(logits, data["label"], reduction="none")
-            outputs = (loss, logits) + outputs[2:]
+            # loss = F.cross_entropy(logits, data["label"], reduction="none")
+            # outputs = (loss, logits) + outputs[2:]
 
         elif "pa" in task:
 
@@ -175,7 +174,7 @@ class BertMetaLearning(nn.Module):
             loss = loss.sum(dim=1) / data["mask"].sum(dim=1)
             outputs = (loss, logits) + outputs[2:]
 
-        return outputs
+        return logits, features
 
     def to(self, *args, **kwargs):
         self = super().to(*args, **kwargs)
