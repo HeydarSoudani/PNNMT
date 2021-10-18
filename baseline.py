@@ -254,7 +254,7 @@ def train(model, task, data):
         optim.zero_grad()
         
         data_labels = batch["label"].to(DEVICE)
-        output, _ = model.forward(args.target_task, batch)
+        output, _ = model.forward(args.task, batch)
         loss = F.cross_entropy(output, data_labels, reduction="none")
         loss = loss.mean()
         loss.backward()
