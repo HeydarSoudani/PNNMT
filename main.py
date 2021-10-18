@@ -10,8 +10,8 @@ from datapath import loc, get_loc
 # import torch_xla
 # import torch_xla.core.xla_model as xm
 
-from samplers.reptile_sampler import TaskSampler
-from learners.reptile_learner import reptile_learner
+# from samplers.reptile_sampler import TaskSampler
+# from learners.reptile_learner import reptile_learner
 
 from samplers.pt_sampler import TaskSampler
 from learners.pt_learner import pt_learner
@@ -325,8 +325,7 @@ def main():
       trg_train_corpus,
       n_way=args.ways,
       n_shot=args.shot,
-      # n_query_way=args.query_ways,
-      n_query=args.query_num,
+      n_query=0,
       n_tasks=args.meta_iteration,
     )
     train_loader = DataLoader(
